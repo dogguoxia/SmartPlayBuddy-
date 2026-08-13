@@ -15,6 +15,7 @@ class Connector:
     System: "SystemCls"
     Session: "SessionCls"
     Error: "ErrorCls"
+    Response: "ResponseCls"
 
     def __init__(self, **config):
         self.url = config.get("url", "ws://smtplay.cabyss.cn:2508/ws")
@@ -36,6 +37,7 @@ class Connector:
             self.System = self.SystemCls(self.conn)
             self.Session = self.SessionCls(self.conn)
             self.Error = self.ErrorCls(self.conn)
+            self.Response = self.ResponseCls(self.conn)
 
             await self.Session.claims(config.get("status"))
 
@@ -96,3 +98,11 @@ class Connector:
 
         async def error(self, data, To: str | None = None, RequestID: str | None = None):
             await self.conn.send(message.error.error(data, To=To, RequestID=RequestID))
+
+
+    class ResponseCls:
+        def __init__(self, conn: websockets.ClientConnection):
+            self.conn = conn
+
+        async def response(self, action: str, data, To: str | None = None, RequestID: str | None = None):
+            await self.conn.send(message.response.response(action, data, To=To, RequestID=RequestID))

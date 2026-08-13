@@ -6,8 +6,9 @@
 
 - 通过 JWT 认证连接服务端，实时接收并执行指令
 - 内置键盘、鼠标驱动（单击、组合键、按下/释放、移动、滚轮等）
+- 内置屏幕 / 窗口捕获驱动（`windows-capture`）：按需截图、持续捕获指定显示器或窗口，支持截图回传
 - 支持虚拟 Xbox 手柄（`vgamepad`）
-- 提供 `smtplay`（客户端）与 `smtplay-mod`（MOD）两个命令行入口
+- 提供 `smtplay`（客户端）、`smtplay-mod`（MOD）与 `smtplay-debug`（调试面板）三个命令行入口
 - 消息统一封装（`command` / `response` / `system`），详见 [docs/data-format.zh-CN.md](docs/data-format.zh-CN.md)
 
 ## 项目结构
@@ -16,7 +17,7 @@
 src/smartplaybuddy/
 ├── client.py        # 客户端入口：接收服务端指令并调用驱动执行
 ├── mod.py           # MOD 入口：处理自定义请求
-├── driver/          # 键盘 / 鼠标 / 虚拟手柄驱动
+├── driver/          # 键盘 / 鼠标 / 屏幕捕获 / 虚拟手柄驱动
 ├── ws/              # WebSocket 连接、消息封装与逻辑处理
 ├── user/            # 登录与令牌刷新（keyring 存储）
 ├── config/          # 服务端地址等配置
@@ -52,6 +53,9 @@ smtplay
 
 # 启动 MOD（处理自定义请求）
 smtplay-mod
+
+# 启动调试面板（日志 / 指令测试台 / 截图预览 / 截图文件管理）
+smtplay-debug
 ```
 
 首次运行会提示登录，令牌通过 `keyring` 保存，之后自动刷新。

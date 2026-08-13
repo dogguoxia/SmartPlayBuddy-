@@ -1,3 +1,6 @@
 websockets
 pyautogui
 keyring
+windows-capture
+pywebview
+PyQt6

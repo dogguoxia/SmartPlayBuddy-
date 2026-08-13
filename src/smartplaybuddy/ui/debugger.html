@@ -1,0 +1,561 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SmartPlayBuddy 调试面板</title>
+<style>
+:root {
+  --accent: #0078d4;
+  --accent-hover: #106ebe;
+  --bg: #f3f3f3;
+  --bg-card: #ffffff;
+  --bg-input: #ffffff;
+  --bg-hover: #f5f5f5;
+  --text: #1b1b1b;
+  --text-secondary: #616161;
+  --border: #e0e0e0;
+  --nav-active: rgba(0, 120, 212, 0.12);
+  --shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  --log-info: #1b1b1b;
+  --log-debug: #9b9b9b;
+  --log-warning: #b8860b;
+  --log-error: #c42b1c;
+}
+[data-theme="dark"] {
+  --accent: #4cc2ff;
+  --accent-hover: #62cdff;
+  --bg: #202020;
+  --bg-card: #2b2b2b;
+  --bg-input: #1f1f1f;
+  --bg-hover: #333333;
+  --text: #f3f3f3;
+  --text-secondary: #a0a0a0;
+  --border: #3d3d3d;
+  --nav-active: rgba(76, 194, 255, 0.16);
+  --shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+  --log-info: #e0e0e0;
+  --log-debug: #7a7a7a;
+  --log-warning: #ffd166;
+  --log-error: #ff6b6b;
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+html, body { height: 100%; }
+body {
+  font-family: "Segoe UI Variable Text", "Segoe UI", "Microsoft YaHei UI", sans-serif;
+  font-size: 14px;
+  background: var(--bg);
+  color: var(--text);
+  overflow: hidden;
+  user-select: none;
+}
+
+/* ===== 顶栏 ===== */
+.topbar {
+  height: 48px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 16px;
+  background: var(--bg-card);
+  border-bottom: 1px solid var(--border);
+}
+.topbar .title { font-size: 14px; font-weight: 600; }
+.topbar .ws-url { font-size: 12px; color: var(--text-secondary); font-family: Consolas, monospace; }
+.topbar .spacer { flex: 1; }
+.chip {
+  font-size: 12px;
+  padding: 3px 10px;
+  border-radius: 10px;
+  background: var(--bg-hover);
+  border: 1px solid var(--border);
+  color: var(--text-secondary);
+}
+.chip b { color: var(--text); font-weight: 600; }
+
+/* ===== 布局 ===== */
+.layout { display: flex; height: calc(100vh - 48px); }
+.nav {
+  width: 200px;
+  padding: 8px;
+  background: var(--bg-card);
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.nav-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+  color: var(--text);
+  border: none;
+  background: none;
+  font-size: 14px;
+  text-align: left;
+}
+.nav-item:hover { background: var(--bg-hover); }
+.nav-item.active { background: var(--nav-active); color: var(--accent); font-weight: 600; }
+.nav-item .icon { width: 20px; text-align: center; font-size: 16px; }
+.nav-bottom { margin-top: auto; }
+
+.content { flex: 1; overflow-y: auto; padding: 20px; }
+.page { display: none; }
+.page.active { display: block; }
+
+/* ===== 卡片 ===== */
+.card {
+  background: var(--bg-card);
+  border-radius: 8px;
+  box-shadow: var(--shadow);
+  padding: 16px;
+  margin-bottom: 16px;
+}
+.card h3 { font-size: 14px; font-weight: 600; margin-bottom: 12px; display: flex; align-items: center; gap: 8px; }
+
+/* ===== 表单 ===== */
+.row { display: flex; gap: 10px; margin-bottom: 10px; flex-wrap: wrap; align-items: center; }
+label { font-size: 12px; color: var(--text-secondary); }
+input[type="text"], input[type="number"], select, textarea {
+  font-family: inherit;
+  font-size: 13px;
+  color: var(--text);
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 6px 10px;
+  outline: none;
+  transition: border-color .15s;
+}
+input:focus, select:focus, textarea:focus { border-color: var(--accent); }
+textarea { font-family: Consolas, "Courier New", monospace; width: 100%; resize: vertical; }
+
+button {
+  font-family: inherit;
+  font-size: 13px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 6px 16px;
+  cursor: pointer;
+  background: var(--bg-card);
+  color: var(--text);
+  transition: background .15s;
+}
+button:hover { background: var(--bg-hover); }
+button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+button.primary:hover { background: var(--accent-hover); }
+button.danger { color: var(--log-error); border-color: var(--log-error); }
+button:disabled { opacity: .5; cursor: not-allowed; }
+button.small { padding: 3px 10px; font-size: 12px; }
+button.icon-btn {
+  width: 32px; height: 32px; padding: 0; border-radius: 6px;
+  display: inline-flex; align-items: center; justify-content: center; font-size: 16px;
+}
+
+/* ===== 日志 ===== */
+.log-toolbar { display: flex; gap: 10px; align-items: center; margin-bottom: 10px; }
+.log-box {
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  height: calc(100vh - 260px);
+  min-height: 300px;
+  overflow-y: auto;
+  font-family: Consolas, "Courier New", monospace;
+  font-size: 12.5px;
+  padding: 10px 0;
+  user-select: text;
+}
+.log-line { display: flex; gap: 10px; padding: 1px 12px; white-space: pre-wrap; word-break: break-all; }
+.log-line:hover { background: var(--bg-hover); }
+.log-line .t { color: var(--text-secondary); flex-shrink: 0; }
+.log-line .lvl { width: 64px; flex-shrink: 0; font-weight: 600; }
+.log-line .src { color: var(--text-secondary); flex-shrink: 0; max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.log-line.info .lvl { color: var(--log-info); }
+.log-line.debug .lvl { color: var(--log-debug); }
+.log-line.warning .lvl { color: var(--log-warning); }
+.log-line.error .lvl, .log-line.critical .lvl { color: var(--log-error); }
+.log-line.error { background: rgba(196, 43, 28, 0.06); }
+
+/* ===== 指令测试台 ===== */
+.action-bar { display: flex; gap: 10px; align-items: center; }
+.action-bar select { flex: 1; }
+.templates { display: flex; gap: 8px; flex-wrap: wrap; }
+.templates button { font-size: 12px; padding: 4px 12px; border-radius: 12px; }
+.result-box {
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 10px 12px;
+  font-family: Consolas, monospace;
+  font-size: 12.5px;
+  min-height: 80px;
+  max-height: 300px;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-all;
+  user-select: text;
+}
+
+/* ===== 截图 ===== */
+.shot-preview {
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px;
+  text-align: center;
+  min-height: 200px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.shot-preview img { max-width: 100%; max-height: 480px; border-radius: 4px; }
+.shot-preview .placeholder { color: var(--text-secondary); font-size: 13px; }
+
+/* ===== 文件列表 ===== */
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--border); }
+th { color: var(--text-secondary); font-weight: 600; font-size: 12px; }
+tr:hover td { background: var(--bg-hover); }
+.file-actions { display: flex; gap: 6px; }
+.empty-tip { color: var(--text-secondary); text-align: center; padding: 24px 0; }
+
+/* ===== 开关 ===== */
+.switch { display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 13px; }
+.switch input { display: none; }
+.switch .track {
+  width: 40px; height: 20px; border-radius: 10px;
+  background: var(--border); position: relative; transition: background .2s;
+}
+.switch .track::after {
+  content: ""; position: absolute; top: 2px; left: 2px;
+  width: 16px; height: 16px; border-radius: 50%; background: #fff;
+  transition: transform .2s;
+}
+.switch input:checked + .track { background: var(--accent); }
+.switch input:checked + .track::after { transform: translateX(20px); }
+
+.toast {
+  position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%);
+  background: var(--text); color: var(--bg);
+  padding: 8px 20px; border-radius: 4px; font-size: 13px;
+  opacity: 0; transition: opacity .2s; pointer-events: none; z-index: 100;
+}
+.toast.show { opacity: 1; }
+
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 5px; }
+::-webkit-scrollbar-thumb:hover { background: var(--text-secondary); }
+</style>
+</head>
+<body>
+<div class="topbar">
+  <span class="title">SmartPlayBuddy 调试面板</span>
+  <span class="ws-url" id="wsUrl"></span>
+  <span class="spacer"></span>
+  <span class="chip" id="chipScreen"></span>
+  <label class="switch" title="切换深浅色">
+    <input type="checkbox" id="themeToggle" onchange="toggleTheme(this.checked)">
+    <span class="track"></span>
+  </label>
+</div>
+
+<div class="layout">
+  <div class="nav">
+    <button class="nav-item active" data-page="logs" onclick="switchPage('logs')"><span class="icon">&#xE7C3;</span>日志</button>
+    <button class="nav-item" data-page="command" onclick="switchPage('command')"><span class="icon">&#xE8FB;</span>指令测试台</button>
+    <button class="nav-item" data-page="screenshot" onclick="switchPage('screenshot')"><span class="icon">&#xE722;</span>截图预览</button>
+    <button class="nav-item" data-page="files" onclick="switchPage('files')"><span class="icon">&#xE838;</span>截图文件</button>
+    <button class="nav-item nav-bottom" onclick="api_call('open_save_dir')"><span class="icon">&#xE8B7;</span>打开截图目录</button>
+  </div>
+
+  <div class="content">
+    <!-- 日志 -->
+    <div class="page active" id="page-logs">
+      <div class="card">
+        <div class="log-toolbar">
+          <select id="logLevel" onchange="renderLogs()">
+            <option value="all">全部级别</option>
+            <option value="info">INFO+</option>
+            <option value="warning">WARNING+</option>
+            <option value="error">ERROR</option>
+          </select>
+          <input type="text" id="logSearch" placeholder="搜索日志…" oninput="renderLogs()" style="flex:1">
+          <button onclick="clearLogs()">清空</button>
+          <button class="icon-btn" onclick="loadLogs()" title="刷新">&#xE72C;</button>
+        </div>
+        <div class="log-box" id="logBox"></div>
+      </div>
+    </div>
+
+    <!-- 指令测试台 -->
+    <div class="page" id="page-command">
+      <div class="card">
+        <h3>发送驱动指令</h3>
+        <div class="action-bar">
+          <select id="cmdAction"></select>
+          <button class="primary" onclick="runCommand()">执行</button>
+        </div>
+        <div class="row" style="margin-top:10px">
+          <label>data (JSON)：</label>
+        </div>
+        <textarea id="cmdData" rows="6" spellcheck="false">{
+  "operate": "screenshot",
+  "monitor": 0
+}</textarea>
+        <div class="row" style="margin-top:10px">
+          <span style="font-size:12px;color:var(--text-secondary)">快捷模板：</span>
+          <div class="templates" id="templates"></div>
+        </div>
+      </div>
+      <div class="card">
+        <h3>执行结果</h3>
+        <div class="result-box" id="cmdResult">尚未执行指令。</div>
+      </div>
+    </div>
+
+    <!-- 截图预览 -->
+    <div class="page" id="page-screenshot">
+      <div class="card">
+        <h3>按需截图</h3>
+        <div class="row">
+          <label>显示器索引 (0=主屏)</label>
+          <input type="number" id="shotMonitor" value="0" min="0" style="width:90px">
+          <label>窗口名 (可选)</label>
+          <input type="text" id="shotWindow" placeholder="例如：记事本 / Notepad" style="width:200px">
+          <label>保存路径 (可选)</label>
+          <input type="text" id="shotSave" placeholder="留空使用默认目录" style="width:220px">
+          <button class="primary" onclick="takeScreenshot()">截图</button>
+        </div>
+      </div>
+      <div class="card">
+        <h3>预览</h3>
+        <div class="shot-preview" id="shotPreview">
+          <span class="placeholder">点击"截图"生成预览</span>
+        </div>
+        <div class="row" style="margin-top:10px">
+          <span id="shotInfo" style="font-size:12px;color:var(--text-secondary)"></span>
+        </div>
+      </div>
+    </div>
+
+    <!-- 截图文件 -->
+    <div class="page" id="page-files">
+      <div class="card">
+        <h3>已保存的截图 <span id="filesCount" style="color:var(--text-secondary);font-weight:400"></span></h3>
+        <div id="filesList"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const API = window.pywebview ? window.pywebview.api : null;
+const LOG_LEVELS = ["debug", "info", "warning", "error", "critical"];
+let allLogs = [];
+let meta = null;
+
+function api_call(name, ...args) {
+  return API ? API[name](...args) : Promise.reject(new Error("pywebview 未就绪"));
+}
+
+function toast(msg) {
+  const el = $("toast");
+  el.textContent = msg;
+  el.classList.add("show");
+  clearTimeout(toast._t);
+  toast._t = setTimeout(() => el.classList.remove("show"), 2000);
+}
+
+function fmtSize(n) {
+  if (n < 1024) return n + " B";
+  if (n < 1048576) return (n / 1024).toFixed(1) + " KB";
+  return (n / 1048576).toFixed(1) + " MB";
+}
+function fmtTime(ts) {
+  const d = new Date(ts * 1000);
+  const p = (x) => String(x).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
+}
+
+/* ===== 主题 ===== */
+function toggleTheme(dark) {
+  document.documentElement.setAttribute("data-theme", dark ? "dark" : "light");
+  localStorage.setItem("smtp-theme", dark ? "dark" : "light");
+}
+(() => {
+  const saved = localStorage.getItem("smtp-theme");
+  if (saved === "dark") {
+    document.documentElement.setAttribute("data-theme", "dark");
+    $("themeToggle").checked = true;
+  }
+})();
+
+/* ===== 页面切换 ===== */
+function switchPage(name) {
+  document.querySelectorAll(".nav-item").forEach(b => b.classList.toggle("active", b.dataset.page === name));
+  document.querySelectorAll(".page").forEach(p => p.classList.toggle("active", p.id === "page-" + name));
+  if (name === "files") loadFiles();
+}
+
+/* ===== 日志 ===== */
+function pushLog(entry) {
+  allLogs.push(entry);
+  if (allLogs.length > 500) allLogs.shift();
+  if ($("page-logs").classList.contains("active")) renderLogs();
+}
+function renderLogs() {
+  const level = $("logLevel").value;
+  const kw = $("logSearch").value.toLowerCase();
+  const box = $("logBox");
+  box.innerHTML = "";
+  let lines = 0;
+  for (const e of allLogs) {
+    const lvl = e.level.toLowerCase();
+    if (level === "info" && !["info", "warning", "error", "critical"].includes(lvl)) continue;
+    if (level === "warning" && !["warning", "error", "critical"].includes(lvl)) continue;
+    if (level === "error" && !["error", "critical"].includes(lvl)) continue;
+    if (kw && !(e.message.toLowerCase().includes(kw) || e.name.toLowerCase().includes(kw))) continue;
+    const line = document.createElement("div");
+    line.className = "log-line " + (LOG_LEVELS.includes(lvl) ? lvl : "info");
+    line.innerHTML = `<span class="t">${e.time}</span><span class="lvl">${e.level}</span><span class="src">${e.name}</span><span class="msg"></span>`;
+    line.lastElementChild.textContent = e.message;
+    box.appendChild(line);
+    lines++;
+  }
+  if (!lines) box.innerHTML = '<div class="log-line" style="color:var(--text-secondary)">无日志</div>';
+  box.scrollTop = box.scrollHeight;
+}
+function clearLogs() { allLogs = []; renderLogs(); }
+function loadLogs() {
+  api_call("get_logs").then(rows => { allLogs = rows; renderLogs(); }).catch(err => toast("加载日志失败: " + err));
+}
+window.__pushLog = (entry) => pushLog(entry);
+
+/* ===== 指令测试台 ===== */
+const TEMPLATES = {
+  keyboard: [
+    { name: "单击 A", data: { operate: "tap", key: "a" } },
+    { name: "组合 Ctrl+C", data: { operate: "combo", keys: ["ctrl", "c"] } },
+  ],
+  mouse: [
+    { name: "移动到中心", data: { operate: "move_to", x: 0.5, y: 0.5, duration: 0.5 } },
+    { name: "左键单击", data: { operate: "tap", button: "left" } },
+    { name: "滚轮滚动", data: { operate: "scroll", y: -300 } },
+  ],
+  screen: [
+    { name: "整屏截图", data: { operate: "screenshot", monitor: 0, return_image: false } },
+    { name: "开始捕获", data: { operate: "capture_start", monitor: 0, name: "debug", minimum_update_interval: 100 } },
+    { name: "取最新帧", data: { operate: "capture_frame", name: "debug", return_image: false } },
+    { name: "停止捕获", data: { operate: "capture_stop", name: "debug" } },
+    { name: "捕获列表", data: { operate: "capture_list" } },
+  ],
+};
+function buildCommandPage() {
+  if (!meta) return;
+  const sel = $("cmdAction");
+  sel.innerHTML = "";
+  for (const a of meta.drivers) {
+    const opt = document.createElement("option");
+    opt.value = a;
+    opt.textContent = a;
+    sel.appendChild(opt);
+  }
+  $("cmdAction").addEventListener("change", () => {
+    const t = TEMPLATES[sel.value];
+    $("templates").innerHTML = "";
+    if (t) for (const item of t) {
+      const btn = document.createElement("button");
+      btn.textContent = item.name;
+      btn.onclick = () => { $("cmdData").value = JSON.stringify(item.data, null, 2); };
+      $("templates").appendChild(btn);
+    }
+  });
+  $("cmdAction").dispatchEvent(new Event("change"));
+}
+function runCommand() {
+  const action = $("cmdAction").value;
+  const data = $("cmdData").value;
+  $("cmdResult").textContent = "执行中…";
+  api_call("run_command", action, data).then(r => {
+    $("cmdResult").textContent = JSON.stringify(r, null, 2);
+  }).catch(err => { $("cmdResult").textContent = "错误: " + err; });
+}
+
+/* ===== 截图预览 ===== */
+function takeScreenshot() {
+  const preview = $("shotPreview");
+  preview.innerHTML = '<span class="placeholder">截图生成中…</span>';
+  $("shotInfo").textContent = "";
+  const m = parseInt($("shotMonitor").value, 10);
+  api_call("screenshot", isNaN(m) ? 0 : m, $("shotWindow").value, $("shotSave").value).then(r => {
+    if (r.status === "ok" && r.data) {
+      preview.innerHTML = `<img src="data:image/png;base64,${r.data}" alt="screenshot">`;
+      $("shotInfo").textContent = `${r.width} × ${r.height} | 已保存: ${r.file}`;
+    } else {
+      preview.innerHTML = '<span class="placeholder" style="color:var(--log-error)">截图失败</span>';
+      $("shotInfo").textContent = r.message || JSON.stringify(r);
+    }
+  }).catch(err => {
+    preview.innerHTML = '<span class="placeholder" style="color:var(--log-error)">截图失败</span>';
+    $("shotInfo").textContent = "错误: " + err;
+  });
+}
+
+/* ===== 截图文件 ===== */
+function loadFiles() {
+  api_call("list_screenshots").then(r => {
+    const box = $("filesList");
+    $("filesCount").textContent = r.status === "ok" ? `(${r.files.length})` : "";
+    if (r.status !== "ok" || !r.files.length) {
+      box.innerHTML = '<div class="empty-tip">暂无截图文件，可在"截图预览"页生成</div>';
+      return;
+    }
+    let html = "<table><thead><tr><th>文件名</th><th>大小</th><th>时间</th><th style=\"width:120px\">操作</th></tr></thead><tbody>";
+    for (const f of r.files) {
+      html += `<tr>
+        <td>${f.name}</td>
+        <td>${fmtSize(f.size)}</td>
+        <td>${fmtTime(f.mtime)}</td>
+        <td><div class="file-actions">
+          <button class="small" onclick="openFile('${f.name}')">打开</button>
+          <button class="small danger" onclick="deleteFile('${f.name}')">删除</button>
+        </div></td>
+      </tr>`;
+    }
+    box.innerHTML = html + "</tbody></table>";
+  }).catch(err => { $("filesList").innerHTML = '<div class="empty-tip">加载失败: ' + err + "</div>"; });
+}
+function openFile(name) {
+  api_call("open_screenshot", name).then(r => { if (r.status !== "ok") toast(r.message || "打开失败"); });
+}
+function deleteFile(name) {
+  if (!confirm(`删除截图「${name}」？`)) return;
+  api_call("delete_screenshot", name).then(r => {
+    if (r.status === "ok") { toast("已删除"); loadFiles(); }
+    else toast(r.message || "删除失败");
+  });
+}
+
+/* ===== 初始化 ===== */
+window.addEventListener("pywebviewready", () => {
+  api_call("on_ready").then(() => {
+    api_call("get_meta").then(m => {
+      meta = m;
+      $("wsUrl").textContent = m.ws_url;
+      $("chipScreen").innerHTML = `屏幕 <b>${m.screen_size[0]}×${m.screen_size[1]}</b>`;
+      buildCommandPage();
+      loadLogs();
+      toast("调试面板已就绪");
+    });
+  });
+});
+</script>
+</body>
+</html>

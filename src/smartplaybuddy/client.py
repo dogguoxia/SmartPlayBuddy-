@@ -17,12 +17,16 @@ class Client(ws.Connector):
         try:
             if msg.Type == "command":
                 if type(msg.Data) is dict:
-                    drivers[msg.Action](msg.Data)
+                    result = drivers[msg.Action](msg.Data)
                 elif type(msg.Data) is list:
+                    result = []
                     for operator in msg.Data:
-                        drivers[msg.Action](operator)
+                        result.append(drivers[msg.Action](operator))
                 else:
                     await self.Error.error("Invalid data type", To=msg.From, RequestID=msg.RequestID)
+                    return
+                if result is not None:
+                    await self.Response.response(msg.Action, result, To=msg.From, RequestID=msg.RequestID)
             else:
                 await self.Error.error("Invalid message type", To=msg.From, RequestID=msg.RequestID)
         except KeyError as e:
