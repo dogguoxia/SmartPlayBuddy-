@@ -269,6 +269,7 @@ tr:hover td { background: var(--bg-hover); }
     <button class="nav-item" data-page="command" onclick="switchPage('command')"><span class="icon">&#xE8FB;</span>指令测试台</button>
     <button class="nav-item" data-page="screenshot" onclick="switchPage('screenshot')"><span class="icon">&#xE722;</span>截图预览</button>
     <button class="nav-item" data-page="files" onclick="switchPage('files')"><span class="icon">&#xE838;</span>截图文件</button>
+    <button class="nav-item" data-page="selftest" onclick="switchPage('selftest')"><span class="icon">&#xE945;</span>驱动自检</button>
     <button class="nav-item nav-bottom" onclick="api_call('open_save_dir')"><span class="icon">&#xE8B7;</span>打开截图目录</button>
   </div>
 
@@ -324,8 +325,6 @@ tr:hover td { background: var(--bg-hover); }
         <div class="row">
           <label>显示器索引 (0=主屏)</label>
           <input type="number" id="shotMonitor" value="0" min="0" style="width:90px">
-          <label>窗口名 (可选)</label>
-          <input type="text" id="shotWindow" placeholder="例如：记事本 / Notepad" style="width:200px">
           <label>保存路径 (可选)</label>
           <input type="text" id="shotSave" placeholder="留空使用默认目录" style="width:220px">
           <button class="primary" onclick="takeScreenshot()">截图</button>
@@ -347,6 +346,24 @@ tr:hover td { background: var(--bg-hover); }
       <div class="card">
         <h3>已保存的截图 <span id="filesCount" style="color:var(--text-secondary);font-weight:400"></span></h3>
         <div id="filesList"></div>
+      </div>
+    </div>
+
+    <!-- 驱动自检 -->
+    <div class="page" id="page-selftest">
+      <div class="card">
+        <h3>驱动自检</h3>
+        <div class="row">
+          <button class="primary" id="btnSelfTestAll" onclick="startSelfTest()">全部自检</button>
+          <span style="font-size:12px;color:var(--text-secondary)">
+            安全模式：键盘按 F13 无害键、鼠标移到屏幕中心（不点击）、屏幕抓一帧验证成像链路。
+            首次加载驱动可能较慢（需启动子进程 / 安装依赖）。
+          </span>
+        </div>
+      </div>
+      <div class="card">
+        <h3>自检结果 <span id="selfTestSummary" style="color:var(--text-secondary);font-weight:400"></span></h3>
+        <div id="selfTestList"><div class="empty-tip">点击"全部自检"开始测试各驱动</div></div>
       </div>
     </div>
   </div>
@@ -494,7 +511,7 @@ function takeScreenshot() {
   preview.innerHTML = '<span class="placeholder">截图生成中…</span>';
   $("shotInfo").textContent = "";
   const m = parseInt($("shotMonitor").value, 10);
-  api_call("screenshot", isNaN(m) ? 0 : m, $("shotWindow").value, $("shotSave").value).then(r => {
+  api_call("screenshot", isNaN(m) ? 0 : m, $("shotSave").value).then(r => {
     if (r.status === "ok" && r.data) {
       preview.innerHTML = `<img src="data:image/png;base64,${r.data}" alt="screenshot">`;
       $("shotInfo").textContent = `${r.width} × ${r.height} | 已保存: ${r.file}`;
@@ -543,17 +560,75 @@ function deleteFile(name) {
   });
 }
 
+/* ===== 驱动自检 ===== */
+let selfTestResults = {};
+function startSelfTest() {
+  $("btnSelfTestAll").disabled = true;
+  selfTestResults = {};
+  $("selfTestSummary").textContent = "测试中…";
+  $("selfTestList").innerHTML = '<div class="empty-tip">正在测试驱动，请稍候…（首次加载驱动可能需要安装依赖）</div>';
+  api_call("start_self_test").catch(err => {
+    toast("启动自检失败: " + err);
+    finishSelfTest();
+  });
+}
+function startSelfTestOne(action) {
+  const btn = document.querySelector(`[data-st-action="${action}"]`);
+  if (btn) btn.disabled = true;
+  api_call("start_self_test_one", action).catch(err => toast("启动自检失败: " + err));
+}
+function renderSelfTestItem(item) {
+  selfTestResults[item.action] = item;
+  const box = $("selfTestList");
+  const actions = Object.keys(selfTestResults).sort();
+  if (!actions.length) return;
+  let html = '<div style="display:flex;flex-direction:column;gap:10px">';
+  for (const a of actions) {
+    const it = selfTestResults[a];
+    const ok = it.status === "ok";
+    html += `<div style="display:flex;align-items:center;gap:12px;padding:10px 12px;border:1px solid var(--border);border-radius:6px">
+      <span style="font-weight:600;width:90px">${a}</span>
+      <span class="chip" style="${ok ? "color:#0a7d33;border-color:#0a7d33" : "color:var(--log-error);border-color:var(--log-error)"}"><b>${ok ? "✓ 通过" : "✗ 失败"}</b></span>
+      <span style="color:var(--text-secondary);font-size:12px;width:80px">${it.elapsed_ms} ms</span>
+      <span style="flex:1;font-size:12px;color:var(--text-secondary);word-break:break-all">${escapeHtml(it.detail || "")}</span>
+      <button class="small" data-st-action="${a}" onclick="startSelfTestOne('${a}')">重测</button>
+    </div>`;
+  }
+  box.innerHTML = html + "</div>";
+}
+function finishSelfTest() {
+  $("btnSelfTestAll").disabled = false;
+  const results = Object.values(selfTestResults);
+  const pass = results.filter(r => r.status === "ok").length;
+  $("selfTestSummary").textContent = results.length ? `(${pass}/${results.length} 通过)` : "";
+}
+function escapeHtml(s) {
+  return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+window.__onTestEvent = (evt) => {
+  if (evt.type === "meta_ready") initMeta(evt.error);
+  else if (evt.type === "self_test_item") renderSelfTestItem(evt.item);
+  else if (evt.type === "self_test_done") {
+    if (evt.error) toast("自检出错: " + evt.error);
+    else toast("自检完成");
+    finishSelfTest();
+  }
+};
+
 /* ===== 初始化 ===== */
+function initMeta(err) {
+  api_call("get_meta").then(m => {
+    meta = m;
+    $("wsUrl").textContent = m.ws_url;
+    $("chipScreen").innerHTML = `屏幕 <b>${m.screen_size[0]}×${m.screen_size[1]}</b>`;
+    buildCommandPage();
+    loadLogs();
+    toast(err ? "面板已就绪（驱动扫描异常，详见日志）" : "调试面板已就绪");
+  }).catch(e => toast("初始化失败: " + e));
+}
 window.addEventListener("pywebviewready", () => {
   api_call("on_ready").then(() => {
-    api_call("get_meta").then(m => {
-      meta = m;
-      $("wsUrl").textContent = m.ws_url;
-      $("chipScreen").innerHTML = `屏幕 <b>${m.screen_size[0]}×${m.screen_size[1]}</b>`;
-      buildCommandPage();
-      loadLogs();
-      toast("调试面板已就绪");
-    });
+    $("wsUrl").textContent = "驱动扫描中…";
   });
 });
 </script>
