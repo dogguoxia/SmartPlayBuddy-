@@ -43,13 +43,22 @@ class ScreenDriver(BaseDriver):
         device_idx = int(params.get("device_idx", 0))
         output_idx = int(params.get("output_idx", 0))
         region = self._parse_region(params.get("region"))
-        fmt = params.get("format", "raw")
+        fmt = params.get("fmt") or params.get("format", "raw")
         quality = int(params.get("quality", 80))
         scale = float(params.get("scale", 1.0))
         resolution = params.get("resolution")
 
-        camera = self._get_camera(device_idx, output_idx)
-        frame = camera.grab(region=region, new_frame_only=False)
+        frame = None
+        backend = "dxcam"
+        try:
+            camera = self._get_camera(device_idx, output_idx)
+            frame = camera.grab(region=region, new_frame_only=False)
+        except Exception:
+            frame = None
+        if frame is None:
+            # DXGI 桌面复制不可用时(远程接管/驱动异常/锁屏等),降级到 GDI 截图
+            frame = self._gdi_capture(region)
+            backend = "gdi"
 
         if frame is None:
             raise RuntimeError("Failed to capture frame")
@@ -74,9 +83,11 @@ class ScreenDriver(BaseDriver):
                 "format": "raw",
                 "width": w,
                 "height": h,
-                "__data__": frame.tobytes(),
+                "__data__": self._to_rgb(frame).tobytes(),
                 "__mime__": "image/raw-rgb",
             }
+
+        frame = self._to_rgb(frame)
 
         if fmt == "jpeg":
             bgr = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
@@ -100,7 +111,24 @@ class ScreenDriver(BaseDriver):
             "height": h,
             "__data__": data,
             "__mime__": f"image/{fmt}",
+            "backend": backend,
         }
+
+    def _gdi_capture(self, region=None):
+        """GDI 截图(PIL ImageGrab),DXGI 不可用时的兜底方案。"""
+        from PIL import ImageGrab
+        if region:
+            img = ImageGrab.grab(bbox=tuple(region))
+        else:
+            img = ImageGrab.grab()
+        return np.array(img)
+
+    def _to_rgb(self, frame):
+        """统一为 3 通道 RGB:dxcam 返回 BGRX(4 通道,alpha 恒 0),PIL 则误判为 RGBA
+        导致 PNG alpha=0 全透明(查看器显示黑图/打不开)。"""
+        if frame.ndim == 3 and frame.shape[2] == 4:
+            return cv2.cvtColor(frame, cv2.COLOR_BGRA2RGB)
+        return frame
 
     def _get_camera(self, device_idx: int, output_idx: int):
         key = (device_idx, output_idx)

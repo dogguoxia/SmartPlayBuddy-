@@ -4,3 +4,6 @@ keyring
 windows-capture
 pywebview
 PyQt6
+dxcam[cv2]
+numpy
+Pillow

@@ -325,8 +325,9 @@ tr:hover td { background: var(--bg-hover); }
         <div class="row">
           <label>显示器索引 (0=主屏)</label>
           <input type="number" id="shotMonitor" value="0" min="0" style="width:90px">
-          <label>保存路径 (可选)</label>
+          <label>保存路径</label>
           <input type="text" id="shotSave" placeholder="留空使用默认目录" style="width:220px">
+          <button onclick="chooseSaveDir()">选择</button>
           <button class="primary" onclick="takeScreenshot()">截图</button>
         </div>
       </div>
@@ -373,13 +374,27 @@ tr:hover td { background: var(--bg-hover); }
 
 <script>
 const $ = (id) => document.getElementById(id);
-const API = window.pywebview ? window.pywebview.api : null;
 const LOG_LEVELS = ["debug", "info", "warning", "error", "critical"];
 let allLogs = [];
 let meta = null;
 
 function api_call(name, ...args) {
-  return API ? API[name](...args) : Promise.reject(new Error("pywebview 未就绪"));
+  if (window.pywebview && window.pywebview.api) {
+    return Promise.resolve().then(() => window.pywebview.api[name](...args));
+  }
+  return new Promise((resolve, reject) => {
+    const t0 = Date.now();
+    const timer = setInterval(() => {
+      if (window.pywebview && window.pywebview.api) {
+        clearInterval(timer);
+        try { resolve(window.pywebview.api[name](...args)); }
+        catch (e) { reject(e); }
+      } else if (Date.now() - t0 > 15000) {
+        clearInterval(timer);
+        reject(new Error("pywebview 未就绪(等待超时)"));
+      }
+    }, 100);
+  });
 }
 
 function toast(msg) {
@@ -506,6 +521,17 @@ function runCommand() {
 }
 
 /* ===== 截图预览 ===== */
+function chooseSaveDir() {
+  api_call("choose_save_dir").then(r => {
+    if (r.status === "ok") {
+      if (r.path) $("shotSave").value = r.path;
+      else toast("已取消选择");
+    } else {
+      toast("选择路径失败: " + (r.message || ""));
+    }
+  }).catch(err => toast("选择路径失败: " + err));
+}
+
 function takeScreenshot() {
   const preview = $("shotPreview");
   preview.innerHTML = '<span class="placeholder">截图生成中…</span>';
@@ -514,7 +540,7 @@ function takeScreenshot() {
   api_call("screenshot", isNaN(m) ? 0 : m, $("shotSave").value).then(r => {
     if (r.status === "ok" && r.data) {
       preview.innerHTML = `<img src="data:image/png;base64,${r.data}" alt="screenshot">`;
-      $("shotInfo").textContent = `${r.width} × ${r.height} | 已保存: ${r.file}`;
+      $("shotInfo").textContent = `${r.width} × ${r.height} | 已保存: ${r.path || r.file}`;
     } else {
       preview.innerHTML = '<span class="placeholder" style="color:var(--log-error)">截图失败</span>';
       $("shotInfo").textContent = r.message || JSON.stringify(r);

@@ -346,12 +346,10 @@ class DriversDict:
     def keys(self):
         self._registry._ensure_scanned()
         result = set()
-        seen = set()
         for info in self._registry._info.values():
             driver_name = info["manifest"]["name"]
-            if driver_name not in seen:
-                seen.add(driver_name)
-                result.update(info.get("actions", []))
+            if driver_name not in result:
+                result.add(driver_name)
         return result
 
 

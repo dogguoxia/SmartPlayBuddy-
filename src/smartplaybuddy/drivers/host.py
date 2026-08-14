@@ -50,6 +50,9 @@ def run_driver(driver_file: str, packages_dir: str = None):
     cmd_queue = queue.Queue()
     
     def _send(meta: dict, bin_data: bytes = None, mime: str = None):
+        if isinstance(meta, dict) and isinstance(meta.get("__data__"), bytes):
+            bin_data = meta.pop("__data__")
+            mime = meta.pop("__mime__", mime)
         json_bytes = json.dumps(meta, ensure_ascii=False).encode("utf-8")
         body = bin_data or b""
         header = struct.pack(_HEADER_FMT, 0, len(json_bytes), len(body))

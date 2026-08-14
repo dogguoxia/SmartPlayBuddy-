@@ -6,6 +6,7 @@ import threading
 import logging
 import importlib.resources
 from collections import deque
+from typing import Any
 
 import pyautogui
 import webview
@@ -63,9 +64,27 @@ class DebuggerApi:
         self.handler = handler
         self.push_cb = push_cb
         self.ready = False
+        self.window: Any = None
+
+    def choose_save_dir(self) -> dict:
+        """弹出系统文件夹选择对话框，返回用户选择的目录。"""
+        try:
+            import webview
+            if self.window is None:
+                return {"status": "error", "message": "窗口未就绪"}
+            result = self.window.create_file_dialog(
+                webview.FOLDER_DIALOG,
+                directory=os.path.abspath(SCREENSHOT_DIR),
+            )
+            if not result:
+                return {"status": "ok", "path": None, "message": "已取消"}
+            return {"status": "ok", "path": result[0]}
+        except Exception as e:
+            return {"status": "error", "message": str(e)}
 
     def on_ready(self):
         self.ready = True
+        self._push({"type": "on_ready"})
         # 后台预热驱动注册表（首次扫描可能触发依赖安装，避免卡住 GUI 线程）
         threading.Thread(target=self._warmup, daemon=True).start()
         return True
@@ -129,8 +148,20 @@ class DebuggerApi:
             data = result.get("__data__")
             if not data:
                 return {"status": "error", "message": "截图结果为空"}
-            os.makedirs(SCREENSHOT_DIR, exist_ok=True)
-            path = save if save else os.path.join(SCREENSHOT_DIR, f"screenshot_{int(time.time() * 1000)}.png")
+            filename = f"screenshot_{int(time.time() * 1000)}.png"
+            if save:
+                ext = os.path.splitext(save)[1].lower()
+                if ext in (".png", ".jpg", ".jpeg", ".webp", ".bmp"):
+                    parent = os.path.dirname(save)
+                    if parent:
+                        os.makedirs(parent, exist_ok=True)
+                    path = save
+                else:
+                    os.makedirs(save, exist_ok=True)
+                    path = os.path.join(save, filename)
+            else:
+                os.makedirs(SCREENSHOT_DIR, exist_ok=True)
+                path = os.path.join(SCREENSHOT_DIR, filename)
             with open(path, "wb") as f:
                 f.write(data)
             b64 = base64.b64encode(data).decode("ascii")
@@ -140,6 +171,7 @@ class DebuggerApi:
                 "width": result.get("width"),
                 "height": result.get("height"),
                 "file": os.path.basename(path),
+                "path": path,
             }
         except Exception as e:
             logger.exception("screenshot failed")
@@ -199,10 +231,14 @@ class DebuggerApi:
 
     def _self_test_worker(self, actions):
         try:
+            logger.info(f"驱动自检开始: {', '.join(sorted(actions))}")
             for a in sorted(actions):
                 item = self._run_self_test(a)
+                level = logger.error if item.get("status") == "error" else logger.info
+                level(f"驱动自检 [{item.get('action')}] {item.get('status')} ({item.get('elapsed_ms')}ms) - {item.get('detail')}")
                 self._push({"type": "self_test_item", "item": item})
             self._push({"type": "self_test_done"})
+            logger.info("驱动自检完成")
         except Exception as e:
             logger.exception("self_test failed")
             self._push({"type": "self_test_done", "error": str(e)})
@@ -247,16 +283,32 @@ class DebuggerApp:
         self.window = None
 
     def run(self):
+        pending = []
+
+        def _emit(entry):
+            if self.window is None:
+                return
+            js = json.dumps(entry, ensure_ascii=False)
+            if "type" in entry:
+                self.window.evaluate_js(f"window.__onTestEvent({js})")
+            else:
+                self.window.evaluate_js(f"window.__pushLog({js})")
+
         def _push(entry):
+            if entry.get("type") == "on_ready":
+                for e in pending:
+                    _emit(e)
+                pending.clear()
+                return
             if self.window is not None and self.api.ready:
                 try:
-                    js = json.dumps(entry, ensure_ascii=False)
-                    if "type" in entry:
-                        self.window.evaluate_js(f"window.__onTestEvent({js})")
-                    else:
-                        self.window.evaluate_js(f"window.__pushLog({js})")
+                    _emit(entry)
                 except Exception:
                     pass
+            else:
+                pending.append(entry)
+                if len(pending) > 500:
+                    pending.pop(0)
 
         handler = LogBufferHandler(push_cb=_push)
         handler.setLevel(logging.DEBUG)
@@ -271,6 +323,7 @@ class DebuggerApp:
             height=800,
             min_size=(960, 640),
         )
+        self.api.window = self.window
         webview.start(debug=False)
 
 
