@@ -398,6 +398,12 @@ td:first-child { font-family: var(--font-mono); font-size: 12.5px; }
 .st-card:hover { border-color: var(--border-strong); box-shadow: var(--shadow-sm); }
 .st-card.st-ok { border-left: 3px solid var(--ok); }
 .st-card.st-fail { border-left: 3px solid var(--err); }
+.st-card.st-wait { border-left: 3px solid var(--text-3); }
+.st-wait .st-badge {
+  color: var(--text-2); border-color: var(--border-strong);
+  background: var(--bg-input);
+}
+.st-wait .st-badge::before { background: var(--text-3); animation: pulse 1.1s ease-in-out infinite; }
 .st-name { font-weight: 650; width: 96px; font-family: var(--font-mono); font-size: 13px; }
 .st-badge {
   display: inline-flex; align-items: center; gap: 6px;
@@ -807,11 +813,13 @@ function deleteFile(name) {
 
 /* ===== 驱动自检 ===== */
 let selfTestResults = {};
+let selfTestActions = [];
 function startSelfTest() {
   $("btnSelfTestAll").disabled = true;
   selfTestResults = {};
+  selfTestActions = [];
   $("selfTestSummary").textContent = "测试中…";
-  $("selfTestList").innerHTML = '<div class="empty-tip">正在测试驱动，请稍候…（首次加载驱动可能需要安装依赖）</div>';
+  $("selfTestList").innerHTML = '<div class="empty-tip">正在启动测试…</div>';
   api_call("start_self_test").catch(err => {
     toast("启动自检失败: " + err);
     finishSelfTest();
@@ -822,14 +830,21 @@ function startSelfTestOne(action) {
   if (btn) btn.disabled = true;
   api_call("start_self_test_one", action).catch(err => toast("启动自检失败: " + err));
 }
-function renderSelfTestItem(item) {
-  selfTestResults[item.action] = item;
+function renderSelfTestList() {
   const box = $("selfTestList");
-  const actions = Object.keys(selfTestResults).sort();
-  if (!actions.length) return;
+  if (!selfTestActions.length) return;
   let html = '<div class="st-list">';
-  for (const a of actions) {
+  for (const a of selfTestActions) {
     const it = selfTestResults[a];
+    if (!it) {
+      html += `<div class="st-card st-wait">
+        <span class="st-name">${a}</span>
+        <span class="st-badge">测试中…</span>
+        <span class="st-time">—</span>
+        <span class="st-detail">排队等待结果…</span>
+      </div>`;
+      continue;
+    }
     const ok = it.status === "ok";
     html += `<div class="st-card ${ok ? "st-ok" : "st-fail"}">
       <span class="st-name">${a}</span>
@@ -852,7 +867,14 @@ function escapeHtml(s) {
 }
 window.__onTestEvent = (evt) => {
   if (evt.type === "meta_ready") initMeta(evt.error);
-  else if (evt.type === "self_test_item") renderSelfTestItem(evt.item);
+  else if (evt.type === "self_test_begin") {
+    selfTestActions = evt.actions || [];
+    renderSelfTestList();
+  }
+  else if (evt.type === "self_test_item") {
+    selfTestResults[evt.item.action] = evt.item;
+    renderSelfTestList();
+  }
   else if (evt.type === "self_test_done") {
     if (evt.error) toast("自检出错: " + evt.error);
     else toast("自检完成");

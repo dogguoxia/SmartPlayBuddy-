@@ -222,27 +222,48 @@ class DebuggerApi:
     # ===== 驱动自检 =====
 
     def start_self_test(self) -> dict:
-        """后台线程执行全部驱动自检，结果通过 push_cb 逐项推送。"""
-        threading.Thread(target=self._self_test_worker, args=(list(drivers.keys()),), daemon=True).start()
+        """后台线程并行执行全部驱动自检，结果逐项推送。"""
+        threading.Thread(target=self._self_test_worker, daemon=True).start()
         return {"status": "started"}
 
     def start_self_test_one(self, action: str) -> dict:
-        threading.Thread(target=self._self_test_worker, args=([action],), daemon=True).start()
+        threading.Thread(target=self._self_test_one_worker, args=(action,), daemon=True).start()
         return {"status": "started"}
 
-    def _self_test_worker(self, actions):
+    def _self_test_worker(self):
         try:
-            logger.info(f"驱动自检开始: {', '.join(sorted(actions))}")
-            for a in sorted(actions):
-                item = self._run_self_test(a)
-                level = logger.error if item.get("status") == "error" else logger.info
-                level(f"驱动自检 [{item.get('action')}] {item.get('status')} ({item.get('elapsed_ms')}ms) - {item.get('detail')}")
-                self._push({"type": "self_test_item", "item": item})
+            actions = sorted(drivers.keys())
+            if not actions:
+                self._push({"type": "self_test_done", "error": "未发现可用驱动"})
+                return
+            logger.info(f"驱动自检开始: {', '.join(actions)}")
+            self._push({"type": "self_test_begin", "actions": actions})
+            threads = []
+            for a in actions:
+                t = threading.Thread(target=self._run_one_and_push, args=(a,), daemon=True)
+                threads.append(t)
+                t.start()
+            for t in threads:
+                t.join()
             self._push({"type": "self_test_done"})
             logger.info("驱动自检完成")
         except Exception as e:
             logger.exception("self_test failed")
             self._push({"type": "self_test_done", "error": str(e)})
+
+    def _self_test_one_worker(self, action):
+        try:
+            self._run_one_and_push(action)
+            self._push({"type": "self_test_done"})
+        except Exception as e:
+            logger.exception("self_test failed")
+            self._push({"type": "self_test_done", "error": str(e)})
+
+    def _run_one_and_push(self, action):
+        item = self._run_self_test(action)
+        level = logger.error if item.get("status") == "error" else logger.info
+        level(f"驱动自检 [{item.get('action')}] {item.get('status')} ({item.get('elapsed_ms')}ms) - {item.get('detail')}")
+        self._push({"type": "self_test_item", "item": item})
 
     def _run_self_test(self, action: str) -> dict:
         started = time.time()
