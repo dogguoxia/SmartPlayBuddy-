@@ -2,3 +2,6 @@ tests
 logs
 src/smartplaybuddy.egg-info
 .env.local
+.vscode
+screenshots
+
