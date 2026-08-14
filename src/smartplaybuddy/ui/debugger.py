@@ -165,11 +165,12 @@ class DebuggerApi:
             with open(path, "wb") as f:
                 f.write(data)
             b64 = base64.b64encode(data).decode("ascii")
+            meta = result.get("result") if isinstance(result.get("result"), dict) else {}
             return {
                 "status": "ok",
                 "data": b64,
-                "width": result.get("width"),
-                "height": result.get("height"),
+                "width": meta.get("width"),
+                "height": meta.get("height"),
                 "file": os.path.basename(path),
                 "path": path,
             }
@@ -257,11 +258,12 @@ class DebuggerApi:
                 return {"action": action, "status": "error", "elapsed_ms": elapsed_ms,
                         "detail": result.get("message", "驱动返回错误")}
             if action == "screen":
-                if not (isinstance(result, dict) and result.get("width") and result.get("height")):
+                meta = result.get("result") if isinstance(result.get("result"), dict) else result
+                if not (isinstance(meta, dict) and meta.get("width") and meta.get("height")):
                     return {"action": action, "status": "error", "elapsed_ms": elapsed_ms,
                             "detail": f"截图结果异常: {result}"}
                 return {"action": action, "status": "ok", "elapsed_ms": elapsed_ms,
-                        "detail": f"抓帧成功 {result['width']}×{result['height']}"}
+                        "detail": f"抓帧成功 {meta['width']}×{meta['height']}"}
             return {"action": action, "status": "ok", "elapsed_ms": elapsed_ms, "detail": "驱动响应正常"}
         except Exception as e:
             return {"action": action, "status": "error",
