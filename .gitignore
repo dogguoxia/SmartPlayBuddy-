@@ -4,4 +4,7 @@ src/smartplaybuddy.egg-info
 .env.local
 .vscode
 screenshots
+__pycache__/
+*.pyc
+*.pyo
 

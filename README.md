@@ -1,89 +1,110 @@
 # SmartPlayBuddy
 
-基于 WebSocket 的智能手柄控制客户端。手机端（服务端）将触发的指令通过 WebSocket 实时下发到本机，客户端执行键盘、鼠标等桌面操作，实现"手机遥控电脑"的玩法；同时提供 MOD 扩展能力，支持处理自定义请求并回传指令。
+> 🌐 Language: **English** | [简体中文](docs/zh-CN/README.md)
 
-## 特性
+SmartPlayBuddy is a WebSocket-based remote device control system. With a plugin-based driver architecture, it supports local device operations such as keyboard, mouse, screen capture, and provides streaming data transmission capabilities.
 
-- 通过 JWT 认证连接服务端，实时接收并执行指令
-- **插件化驱动架构**：驱动以独立子进程运行，按需加载、崩溃自动恢复，隔离互不影响
-- 内置键盘、鼠标驱动（单击、组合键、按下/释放、移动、滚轮等）
-- 内置屏幕 / 窗口捕获驱动（`windows-capture`）：按需截图、持续捕获指定显示器或窗口，支持截图与实时画面流式回传
-- 驱动执行结果回传服务端（含批量指令列表结果、二进制数据）
-- 提供 `smtplay`（客户端）、`smtplay-mod`（MOD）与 `smtplay-debug`（调试面板）三个命令行入口
-- 消息统一封装（`command` / `response` / `stream` / `system`），详见 [docs/data-format.zh-CN.md](docs/data-format.zh-CN.md)
+## Features
 
-## 驱动架构
+- **Plugin-based Drivers** — Keyboard, mouse, screen capture and other drivers are loaded as plugins, supporting hot-plugging and crash isolation
+- **Streaming** — Supports high-frequency data streams such as screen capture, efficiently transmitted via the text + binary dual-frame protocol
+- **Mod Extensions** — Provides a Mod base class for third-party custom business logic
+- **Internationalization** — Built-in i18n module with multi-language hot-reload support
+- **JWT Authentication** — Server identity verification via JWT tokens
 
-```
-src/smartplaybuddy/drivers/
-├── registry.py      # 驱动注册表：扫描、加载、进程管理、崩溃恢复
-├── base.py          # 驱动基类与子进程通信协议
-├── host.py          # 驱动宿主：子进程内运行驱动入口
-├── keyboard/        # 键盘驱动（pyautogui）
-│   ├── driver.py
-│   ├── manifest.json
-│   └── requirements.txt
-├── mouse/           # 鼠标驱动（pyautogui）
-└── screen/          # 屏幕捕获驱动（windows-capture）
-```
-
-- 每个驱动是一个独立目录，通过 `manifest.json` 声明元数据（`appid`、`name`、`entry`、`requirements`、`actions`）
-- 客户端按 `action` 懒加载驱动：首次调用时以子进程启动（`--driver-host` 模式），按需安装该驱动的依赖
-- 驱动与客户端通过 stdin/stdout 二进制协议通信，驱动崩溃后自动重启恢复
-- 调用方式统一为 `drivers[action](data)`，支持 `start_stream` / `stop_stream` 实时画面回传
-
-## 项目结构
+## Architecture Overview
 
 ```
-src/smartplaybuddy/
-├── client.py        # 客户端入口：接收服务端指令并调用驱动执行，回传结果
-├── mod.py           # MOD 入口：处理自定义请求
-├── drivers/         # 插件化驱动系统（键盘 / 鼠标 / 屏幕，见上文）
-├── ws/              # WebSocket 连接、消息封装与逻辑处理
-├── user/            # 登录与令牌刷新（keyring 存储）
-├── config/          # 服务端地址等配置
-├── i18n/            # 多语言支持
-├── log/             # 日志
-└── ui/              # 界面（调试面板等）
+
+
+┌─────────────────────────────────────────────────────┐
+│                      Server                         │
+│         JWT Auth / Device Mgmt / Msg Routing        │
+└──────────────────────┬──────────────────────────────┘
+                       │ WebSocket
+          ┌────────────┼────────────┐
+          ▼            ▼            ▼
+    ┌──────────┐ ┌──────────┐ ┌──────────┐
+    │  Client  │ │   Mod    │ │  Client  │
+    │ (Device) │ │  (Logic) │ │ (Device) │
+    └────┬─────┘ └──────────┘ └──────────┘
+         │
+    ┌────┴──────────────────────┐
+    │      DriverRegistry       │
+    │  ┌────────┬──────┬──────┐ │
+    │  │Keyboard│Mouse │Screen│ │
+    │  │ Driver │Driver│Driver│ │
+    │  └────┬───┴──┬───┴──┬───┘ │
+    │      │IPC   │IPC   │IPC   │
+    │ Subproc  Subproc  Subproc │
+    └───────────────────────────┘
+```
+## Project Structure
+
 ```
 
-## 环境要求
 
-- Python >= 3.9
-- Windows（键盘 / 鼠标 / 屏幕捕获驱动依赖 `pyautogui`、`windows-capture`）
-
-## 安装
-
-```bash
-pip install -r requirements.txt
+SmartPlayBuddy/
+├── src/smartplaybuddy/
+│   ├── client.py          ← Main client module (device side)
+│   ├── mod.py             ← Mod entry point
+│   ├── config/            ← Global config (server URL, version)
+│   ├── drivers/           ← Driver framework + plugin directory
+│   │   ├── base.py        ← BaseDriver base class
+│   │   ├── host.py        ← Subprocess driver runner
+│   │   ├── registry.py    ← Driver registry + subprocess management
+│   │   ├── keyboard/      ← Keyboard driver
+│   │   ├── mouse/         ← Mouse driver
+│   │   └── screen/        ← Screen capture driver
+│   ├── i18n/              ← Internationalization module
+│   │   ├── translator.py  ← Translator
+│   │   └── locales/       ← Language packs
+│   ├── log/               ← Logging module
+│   ├── user/              ← User authentication (JWT login)
+│   └── ws/                ← WebSocket connector
+│       ├── connector.py   ← Connection base class (text+binary dual-frame protocol)
+│       ├── message/       ← Message protocol definitions
+│       └── logic/         ← System message handling
+├── docs/                  ← Documentation
+└── pyproject.toml         ← Project configuration
 ```
+## Quick Start
 
-或通过 pyproject 安装（同时提供命令行入口）：
+### Requirements
+
+- Python >= 3.10
+- Windows (screen capture driver depends on DirectX)
+
+### Installation
 
 ```bash
 pip install -e .
 ```
-
-## 使用
-
-配置服务端地址（`src/smartplaybuddy/config/__init__.py`，默认 `localhost:8000` / `ws://localhost:2508/ws`），然后运行：
+### Run Client (Device Side)
 
 ```bash
-# 启动客户端（接收指令，执行键盘/鼠标等操作）
 smtplay
-
-# 启动 MOD（处理自定义请求）
-smtplay-mod
-
-# 启动调试面板（日志 / 驱动自检 / 指令测试台 / 截图预览 / 截图文件管理）
-smtplay-debug
 ```
+After the client starts, it will:
+1. Auto-login or open browser for JWT authentication
+2. Scan and load local drivers
+3. Connect to the server and wait for commands
 
-首次运行会提示登录，令牌通过 `keyring` 保存，之后自动刷新。
+## Documentation
 
-## 开发
+- [Data Format](docs/data-format.md) — WebSocket message protocol
+- [Driver System](docs/driver.md) — Driver development guide
+- [Mod Development](docs/mods/mod-development.md) — Mod extension development guide
 
-- 数据通信格式见 [docs/data-format.zh-CN.md](docs/data-format.zh-CN.md)
-- 驱动开发与插件化机制见 [docs/driver.zh-CN.md](docs/driver.zh-CN.md)
-- MOD 开发流程见 [docs/mods/mod-development.zh-CN.md](docs/mods/mod-development.zh-CN.md)
-- 产品需求文档见 [docs/SmartPlayBuddy-prd.md](docs/SmartPlayBuddy-prd.md)
+## Tech Stack
+
+| Component              | Technology                  |
+|------------------------|-----------------------------|
+| Communication Protocol | WebSocket (websockets)      |
+| Driver IPC             | stdin/stdout binary frames  |
+| Screen Capture         | dxcam + OpenCV              |
+| Keyboard/Mouse Control | pyautogui                   |
+| Authentication         | JWT (keyring token storage) |
+| Internationalization   | Custom i18n module          |
+
+> This project is currently under development, stay tuned...

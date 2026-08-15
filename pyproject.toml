@@ -26,4 +26,3 @@ where = ["src"]
 [project.scripts]
 smtplay = "smartplaybuddy.client:main"
 smtplay-mod = "smartplaybuddy.mod:main"
-smtplay-debug = "smartplaybuddy.ui.debugger:main"
