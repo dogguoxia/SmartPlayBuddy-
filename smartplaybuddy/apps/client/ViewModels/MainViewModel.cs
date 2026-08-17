@@ -281,8 +281,11 @@ public class MainViewModel : INotifyPropertyChanged
     {
         try
         {
-            if (msg.Action == "chat" && msg.Data is string chatText)
+            if (msg.Action == "chat")
             {
+                var chatText = msg.Data is string s
+                    ? s
+                    : (msg.Data is JsonElement e ? e.GetRawText() : JsonSerializer.Serialize(msg.Data));
                 Log($"[收到文字] {chatText}");
                 await _webSocket.SendAsync(new Message
                 {
