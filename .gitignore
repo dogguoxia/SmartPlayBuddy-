@@ -8,5 +8,6 @@ __pycache__/
 *.pyc
 *.pyo
 docs/superpowers
+smartplaybuddy/apps/server/screenshots/
 
 
