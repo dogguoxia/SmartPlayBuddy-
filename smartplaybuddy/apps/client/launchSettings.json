@@ -1,0 +1,8 @@
+{
+  "profiles": {
+    "SmartPlayBuddy.Client": {
+      "commandName": "MsixPackage",
+      "nativeDebugging": false
+    }
+  }
+}

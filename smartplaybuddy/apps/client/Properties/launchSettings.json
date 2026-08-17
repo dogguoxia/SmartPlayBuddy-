@@ -1,0 +1,7 @@
+{
+  "profiles": {
+    "Client (Package)": {
+      "commandName": "MsixPackage"
+    }
+  }
+}
