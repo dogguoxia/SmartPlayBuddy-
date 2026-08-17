@@ -38,6 +38,19 @@ export async function sendCommand(
   return (await res.json()) as { accepted: boolean; requestId?: string };
 }
 
+export async function sendChatMessage(
+  deviceId: string,
+  text: string
+): Promise<{ accepted: boolean; requestId?: string }> {
+  const res = await fetch(`${API_BASE}/api/devices/${encodeURIComponent(deviceId)}/command`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ action: "chat", data: text }),
+  });
+  if (!res.ok) throw new Error("failed to send chat message");
+  return (await res.json()) as { accepted: boolean; requestId?: string };
+}
+
 export interface Screenshot {
   id: string;
   deviceId: string;

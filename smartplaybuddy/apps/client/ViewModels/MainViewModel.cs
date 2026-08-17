@@ -281,6 +281,20 @@ public class MainViewModel : INotifyPropertyChanged
     {
         try
         {
+            if (msg.Action == "chat" && msg.Data is string chatText)
+            {
+                Log($"[收到文字] {chatText}");
+                await _webSocket.SendAsync(new Message
+                {
+                    Type = "response",
+                    Action = "chat",
+                    To = msg.From,
+                    RequestId = msg.RequestId,
+                    Data = new { received = true },
+                });
+                return;
+            }
+
             var parameters = ToDictionary(msg.Data);
             var result = await _registry.ExecuteAsync(msg.Action, parameters);
 

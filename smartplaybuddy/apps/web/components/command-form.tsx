@@ -4,35 +4,35 @@ import { useState } from "react";
 import { Button } from "@workspace/ui/components/button";
 import { Input } from "@workspace/ui/components/input";
 import { Label } from "@workspace/ui/components/label";
-import { Textarea } from "@workspace/ui/components/textarea";
-import { sendCommand } from "@/lib/api";
+import { sendCommand, sendChatMessage } from "@/lib/api";
 
 interface CommandFormProps {
   deviceId?: string;
   onSent?: (action: string, data: unknown) => void;
 }
 
+type Mode = "text" | "screenshot";
+
 export function CommandForm({ deviceId, onSent }: CommandFormProps) {
-  const [action, setAction] = useState("screen");
-  const [data, setData] = useState('{"operate":"capture"}');
+  const [mode, setMode] = useState<Mode>("text");
+  const [text, setText] = useState("");
   const [loading, setLoading] = useState(false);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!deviceId) return;
 
-    let parsed: unknown = {};
-    try {
-      parsed = JSON.parse(data || "{}");
-    } catch {
-      alert("Data 必须是合法 JSON");
-      return;
-    }
-
     setLoading(true);
     try {
-      await sendCommand(deviceId, action, parsed);
-      onSent?.(action, parsed);
+      if (mode === "text") {
+        if (!text.trim()) return;
+        await sendChatMessage(deviceId, text.trim());
+        onSent?.("chat", text.trim());
+        setText("");
+      } else {
+        await sendCommand(deviceId, "screen", { operate: "capture" });
+        onSent?.("screen", { operate: "capture" });
+      }
     } catch (err) {
       alert(String(err));
     } finally {
@@ -43,26 +43,36 @@ export function CommandForm({ deviceId, onSent }: CommandFormProps) {
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
       <div>
-        <Label htmlFor="action">Action</Label>
-        <Input
-          id="action"
-          value={action}
-          onChange={(e) => setAction(e.target.value)}
-          placeholder="screen"
-        />
+        <Label htmlFor="mode">行为</Label>
+        <select
+          id="mode"
+          value={mode}
+          onChange={(e) => setMode(e.target.value as Mode)}
+          className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm"
+        >
+          <option value="text">发送文本</option>
+          <option value="screenshot">请求截图</option>
+        </select>
       </div>
-      <div>
-        <Label htmlFor="data">Data (JSON)</Label>
-        <Textarea
-          id="data"
-          value={data}
-          onChange={(e) => setData(e.target.value)}
-          rows={5}
-          placeholder='{"operate":"capture"}'
-        />
-      </div>
+
+      {mode === "text" ? (
+        <div>
+          <Label htmlFor="text">文字内容</Label>
+          <Input
+            id="text"
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            placeholder="输入要发送给客户端的文字"
+          />
+        </div>
+      ) : (
+        <div className="text-sm text-muted-foreground">
+          点击发送后，客户端会截取当前屏幕并回传。
+        </div>
+      )}
+
       <Button type="submit" disabled={!deviceId || loading}>
-        {loading ? "发送中..." : "发送指令"}
+        {loading ? "发送中..." : "发送"}
       </Button>
     </form>
   );
