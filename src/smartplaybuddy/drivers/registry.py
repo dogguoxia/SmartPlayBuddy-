@@ -6,6 +6,7 @@ DriverRegistry 管理所有驱动进程的启动/停止/重扫描；
 DriversDict 提供字典式驱动调用接口。
 """
 import json
+import os
 import queue
 import struct
 import subprocess
@@ -44,6 +45,7 @@ class DriverProcess:
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             creationflags=_CREATION_NO_WINDOW,
+            env=self._build_env(),
         )
         self._ready = False
         self._resp_queue = queue.Queue()
@@ -59,6 +61,16 @@ class DriverProcess:
             raise RuntimeError(translate("driver.failed_to_start", name=name))
         self._ready = True
         logger.debug(translate("driver.started", name=name))
+
+    @staticmethod
+    def _build_env() -> dict:
+        """子进程继承 src 目录到 PYTHONPATH,否则 `-m smartplaybuddy.client` 找不到包。"""
+        env = os.environ.copy()
+        src_dir = str(Path(__file__).resolve().parent.parent.parent)
+        if src_dir not in sys.path:
+            sys.path.insert(0, src_dir)
+        env["PYTHONPATH"] = src_dir
+        return env
 
     def _read_exact(self, n: int) -> bytes | None:
         buf = b""

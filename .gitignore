@@ -7,4 +7,6 @@ screenshots
 __pycache__/
 *.pyc
 *.pyo
+docs/superpowers
+
 
