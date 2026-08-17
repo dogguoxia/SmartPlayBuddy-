@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
+using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Text.Json;
 using System.Threading.Tasks;
@@ -16,12 +17,15 @@ namespace SmartPlayBuddy.Client.ViewModels;
 
 public class MainViewModel : INotifyPropertyChanged
 {
+    public string[] Modes { get; } = { "text", "screenshot" };
+
     private readonly WebSocketService _webSocket = new();
     private readonly DriverRegistry _registry = new();
     private readonly DispatcherQueue _dispatcher;
 
     private string _wsUrl = "ws://localhost:2508/ws";
     private string _connectionStatus = "未连接";
+    private string _selectedMode = "text";
     private string _commandAction = "screen";
     private string _commandData = "{\"operate\":\"capture\"}";
     private string? _deviceInfo;
@@ -45,7 +49,23 @@ public class MainViewModel : INotifyPropertyChanged
 
         ConnectCommand = new RelayCommand(async () => await ConnectAsync(), () => !IsConnected);
         DisconnectCommand = new RelayCommand(async () => await DisconnectAsync(), () => IsConnected);
-        SendCommand = new RelayCommand(async () => await SendCommandAsync(), () => IsConnected);
+        SendCommand = new RelayCommand(async () => await SendAsync(), () => IsConnected);
+    }
+
+    private void UpdateModeDefaults()
+    {
+        if (_selectedMode == "screenshot")
+        {
+            CommandAction = "screen";
+            CommandData = "{\"operate\":\"capture\"}";
+        }
+        else
+        {
+            CommandAction = "screen";
+            CommandData = "{\"operate\":\"capture\"}";
+        }
+        OnPropertyChanged(nameof(IsTextMode));
+        OnPropertyChanged(nameof(IsScreenshotMode));
     }
 
     public string WsUrl
@@ -61,6 +81,22 @@ public class MainViewModel : INotifyPropertyChanged
     }
 
     public bool IsConnected => _webSocket.IsConnected;
+
+    public string SelectedMode
+    {
+        get => _selectedMode;
+        set
+        {
+            if (SetProperty(ref _selectedMode, value))
+            {
+                UpdateModeDefaults();
+                RaiseCanExecuteChanged();
+            }
+        }
+    }
+
+    public bool IsTextMode => _selectedMode == "text";
+    public bool IsScreenshotMode => _selectedMode == "screenshot";
 
     public string CommandAction
     {
@@ -126,7 +162,19 @@ public class MainViewModel : INotifyPropertyChanged
         await _webSocket.DisconnectAsync();
     }
 
-    public async Task SendCommandAsync()
+    public async Task SendAsync()
+    {
+        if (_selectedMode == "screenshot")
+        {
+            await SendScreenshotAsync();
+        }
+        else
+        {
+            await SendTextAsync();
+        }
+    }
+
+    public async Task SendTextAsync()
     {
         try
         {
@@ -141,10 +189,44 @@ public class MainViewModel : INotifyPropertyChanged
                 Data = data,
             };
             await _webSocket.SendAsync(msg);
+            Log($"发送文字: {CommandAction}");
         }
         catch (Exception ex)
         {
             Log($"发送失败: {ex.Message}");
+        }
+    }
+
+    public async Task SendScreenshotAsync()
+    {
+        try
+        {
+            var parameters = new Dictionary<string, object?>
+            {
+                ["operate"] = "capture",
+                ["format"] = "png",
+            };
+
+            var result = await _registry.ExecuteAsync("screen", parameters);
+            if (result.Status != "ok" || result.Data is null)
+            {
+                Log($"截图失败: {result.Message}");
+                return;
+            }
+
+            var response = new Message
+            {
+                Type = "stream",
+                Action = "screen",
+                Data = BuildResponseData(result, new { mode = "manual_screenshot" }),
+            };
+
+            await _webSocket.SendAsync(response);
+            Log($"发送截图: {result.Data.Length} bytes");
+        }
+        catch (Exception ex)
+        {
+            Log($"截图发送失败: {ex.Message}");
         }
     }
 
@@ -175,7 +257,10 @@ public class MainViewModel : INotifyPropertyChanged
     {
         _dispatcher.TryEnqueue(() =>
         {
-            Log($"[{msg.Type}/{msg.Action}] {JsonSerializer.Serialize(msg.Data)}");
+            var preview = msg.Data is JsonElement element
+                ? JsonSerializer.Serialize(element).Substring(0, Math.Min(120, JsonSerializer.Serialize(element).Length))
+                : JsonSerializer.Serialize(msg.Data);
+            Log($"[{msg.Type}/{msg.Action}] {preview}");
 
             if (msg.Type == "session" && msg.Action == "claimed")
             {
@@ -338,6 +423,11 @@ public class MainViewModel : INotifyPropertyChanged
                 Logs.RemoveAt(Logs.Count - 1);
             }
         });
+    }
+
+    protected virtual void OnPropertyChanged([CallerMemberName] string propertyName = "")
+    {
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
     }
 
     private void LoadSettings()
