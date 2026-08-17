@@ -38,6 +38,25 @@ export async function sendCommand(
   return (await res.json()) as { accepted: boolean; requestId?: string };
 }
 
+export interface Screenshot {
+  id: string;
+  deviceId: string;
+  action: string;
+  filename: string;
+  size: number;
+  createdAt: number;
+}
+
+export async function getScreenshots(deviceId?: string): Promise<Screenshot[]> {
+  const url = deviceId
+    ? `${API_BASE}/api/screenshots?deviceId=${encodeURIComponent(deviceId)}`
+    : `${API_BASE}/api/screenshots`;
+  const res = await fetch(url, { cache: "no-store" });
+  if (!res.ok) throw new Error("failed to fetch screenshots");
+  const json = (await res.json()) as { screenshots: Screenshot[] };
+  return json.screenshots;
+}
+
 export interface EventHandlers {
   onConnected?: (payload: unknown) => void;
   onResponse?: (payload: unknown) => void;
@@ -45,6 +64,7 @@ export interface EventHandlers {
   onError?: (payload: unknown) => void;
   onDisconnected?: (payload: unknown) => void;
   onBinary?: (payload: unknown) => void;
+  onChat?: (payload: unknown) => void;
 }
 
 export function subscribeEvents(deviceId: string, handlers: EventHandlers): () => void {
@@ -68,6 +88,7 @@ export function subscribeEvents(deviceId: string, handlers: EventHandlers): () =
   es.addEventListener("error", wrap("onError"));
   es.addEventListener("disconnected", wrap("onDisconnected"));
   es.addEventListener("binary", wrap("onBinary"));
+  es.addEventListener("chat", wrap("onChat"));
 
   return () => es.close();
 }
