@@ -1,3 +1,0 @@
-dxcam[cv2]
-numpy
-Pillow
