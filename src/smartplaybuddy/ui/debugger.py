@@ -4,6 +4,8 @@ import time
 import base64
 import threading
 import logging
+import tempfile
+import pathlib
 import importlib.resources
 from collections import deque
 from typing import Any
@@ -278,12 +280,23 @@ def _load_html() -> str:
     return pkg.joinpath("debugger.html").read_text(encoding="utf-8")
 
 
+def _html_file_url() -> str:
+    """将调试面板 HTML 写入临时文件并通过 file:// 加载，避免 pywebview inline html 在某些环境触发递归错误。"""
+    html = _load_html()
+    temp_dir = tempfile.mkdtemp(prefix="spb_debugger_")
+    path = os.path.join(temp_dir, "debugger.html")
+    with open(path, "w", encoding="utf-8") as f:
+        f.write(html)
+    return pathlib.Path(path).as_uri()
+
+
 class DebuggerApp:
     def __init__(self):
         self.api = DebuggerApi()
         self.window = None
 
-    def run(self):
+    def run(self) -> bool:
+        """启动 UI，返回是否成功。"""
         pending = []
 
         def _emit(entry):
@@ -316,17 +329,23 @@ class DebuggerApp:
         logmod.logger.addHandler(handler)
         self.api = DebuggerApi(handler, push_cb=_push)
 
-        self.window = webview.create_window(
-            "SmartPlayBuddy 调试面板",
-            html=_load_html(),
-            js_api=self.api,
-            width=1280,
-            height=800,
-            min_size=(960, 640),
-        )
-        self.api.window = self.window
-        webview.start(debug=False)
+        try:
+            url = _html_file_url()
+            self.window = webview.create_window(
+                "SmartPlayBuddy 调试面板",
+                url=url,
+                js_api=self.api,
+                width=1280,
+                height=800,
+                min_size=(960, 640),
+            )
+            self.api.window = self.window
+            webview.start(debug=False)
+            return True
+        except Exception as e:
+            logger.exception("UI 启动失败")
+            return False
 
 
-def main():
-    DebuggerApp().run()
+def main() -> bool:
+    return DebuggerApp().run()

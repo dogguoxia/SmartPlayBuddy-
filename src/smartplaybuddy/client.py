@@ -70,7 +70,7 @@ class Client(ws.Connector):
 
                 # 处理 start_stream：发送响应后注册流回调
                 if msg.Data.get("operate") == "start_stream":
-                    stream_id = msg.RequestID
+                    stream_id = msg.RequestID or ""
                     msg.Data["stream_id"] = stream_id
                     resp = drivers[msg.Action](msg.Data)
                     if isinstance(resp, dict) and resp.get("status") == "ok":
@@ -207,57 +207,71 @@ class Client(ws.Connector):
         logger.info(i18n.translate("client.all_streams_stopped"))
 
 
-def main():
-    import sys
-    if len(sys.argv) > 1 and sys.argv[1] == "--driver-host":
-        from .drivers.host import run_driver
-        driver_file = sys.argv[2]
-        packages_dir = sys.argv[3] if len(sys.argv) > 3 else None
-        run_driver(driver_file, packages_dir)
-        return
+def _build_client_config():
+    from . import config as app_config
+    import platform
+    import pyautogui
 
-    async def start():
-        from . import config as app_config
-        from . import user
-
-        import platform
-        import pyautogui
-
-        tokens = user.refresh_login() or user.login()
-        user.save_tokens(tokens)
-
-        from .drivers import registry
-        registry.scan()
-
-        client_config = {
-            "url": WS_URL,
-            "headers": {
-                "Authorization": f"Bearer {tokens.access_token}",
-            },
-            "status": {
-                "device": {
-                    "type": "client",
-                    "deviceName": "a",
-                    "deviceInfo": "",
-                    "platform": platform.platform(),
-                    "machine": platform.machine(),
-                    "appVersion": app_config.VERSION,
-                    "screenResolution": f"{pyautogui.size().width}x{pyautogui.size().height}",
-                }
+    return {
+        "url": WS_URL,
+        "status": {
+            "device": {
+                "type": "client",
+                "deviceName": "a",
+                "deviceInfo": "",
+                "platform": platform.platform(),
+                "machine": platform.machine(),
+                "appVersion": app_config.VERSION,
+                "screenResolution": f"{pyautogui.size().width}x{pyautogui.size().height}",
             }
         }
-        Client(**client_config)
+    }
 
-        while True:
-            await asyncio.sleep(1)
 
+def _is_local_server():
+    return "localhost" in WS_URL or "127.0.0.1" in WS_URL
+
+
+async def run_client(skip_login: bool = False):
+    from . import user
+    from .drivers import registry
+
+    registry.scan()
+
+    client_config = _build_client_config()
+
+    if not skip_login and not _is_local_server():
+        tokens = user.refresh_login() or user.login()
+        user.save_tokens(tokens)
+        client_config["headers"] = {"Authorization": f"Bearer {tokens.access_token}"}
+
+    Client(**client_config)
+
+    while True:
+        await asyncio.sleep(1)
+
+
+def run_client_sync(skip_login: bool = False):
     try:
-        asyncio.run(start())
+        asyncio.run(run_client(skip_login=skip_login))
     except KeyboardInterrupt:
         logger.info(i18n.translate("system.close"))
     finally:
         from .drivers import registry as drv_registry
         drv_registry.shutdown()
+
+
+def main():
+    import sys
+    if len(sys.argv) > 1 and sys.argv[1] == "--driver-host":
+        from .drivers.host import run_driver
+        driver_file = sys.argv[2]
+        packages_dir = sys.argv[3] if len(sys.argv) > 3 else ""
+        run_driver(driver_file, packages_dir)
+        return
+
+    run_client_sync()
+
 
 if __name__ == "__main__":
     main()
