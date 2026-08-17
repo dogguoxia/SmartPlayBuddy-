@@ -26,8 +26,7 @@ public class MainViewModel : INotifyPropertyChanged
     private string _wsUrl = "ws://localhost:2508/ws";
     private string _connectionStatus = "未连接";
     private string _selectedMode = "text";
-    private string _commandAction = "screen";
-    private string _commandData = "{\"operate\":\"capture\"}";
+    private string _textMessage = "";
     private string? _deviceInfo;
 
     public event PropertyChangedEventHandler? PropertyChanged;
@@ -54,16 +53,6 @@ public class MainViewModel : INotifyPropertyChanged
 
     private void UpdateModeDefaults()
     {
-        if (_selectedMode == "screenshot")
-        {
-            CommandAction = "screen";
-            CommandData = "{\"operate\":\"capture\"}";
-        }
-        else
-        {
-            CommandAction = "screen";
-            CommandData = "{\"operate\":\"capture\"}";
-        }
         OnPropertyChanged(nameof(IsTextMode));
         OnPropertyChanged(nameof(IsScreenshotMode));
     }
@@ -98,16 +87,10 @@ public class MainViewModel : INotifyPropertyChanged
     public bool IsTextMode => _selectedMode == "text";
     public bool IsScreenshotMode => _selectedMode == "screenshot";
 
-    public string CommandAction
+    public string TextMessage
     {
-        get => _commandAction;
-        set => SetProperty(ref _commandAction, value);
-    }
-
-    public string CommandData
-    {
-        get => _commandData;
-        set => SetProperty(ref _commandData, value);
+        get => _textMessage;
+        set => SetProperty(ref _textMessage, value);
     }
 
     public string? DeviceInfo
@@ -178,18 +161,20 @@ public class MainViewModel : INotifyPropertyChanged
     {
         try
         {
-            var data = string.IsNullOrWhiteSpace(CommandData)
-                ? new { }
-                : JsonSerializer.Deserialize<object>(CommandData) ?? new { };
+            if (string.IsNullOrWhiteSpace(TextMessage))
+            {
+                Log("文字内容为空");
+                return;
+            }
 
             var msg = new Message
             {
-                Type = "command",
-                Action = CommandAction,
-                Data = data,
+                Type = "chat",
+                Action = "text",
+                Data = TextMessage.Trim(),
             };
             await _webSocket.SendAsync(msg);
-            Log($"发送文字: {CommandAction}");
+            Log($"发送文字: {TextMessage.Trim()}");
         }
         catch (Exception ex)
         {
